@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Chat #{{ data.chat.id }} · Trading Platform{% endblock %}
+
+{% block content %}
+<h1>{{ data.chat.title }}</h1>
+<p class="muted">Username: <span class="mono">{{ data.chat.username or "—" }}</span></p>
+
+<section class="grid grid-2">
+  <div class="card">
+    <h3>Stats</h3>
+    <dl class="def">
+      <div><dt>Total signals</dt><dd>{{ data.stats.total_signals }}</dd></div>
+      <div><dt>Last signal</dt><dd>{{ data.stats.last_signal_at or "—" }}</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Signals</h2>
+  {% if data.signals %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Symbol</th><th>Type</th><th>Created</th><th>TPs Hit</th><th>Entries Hit</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in data.signals %}
+        <tr>
+          <td>#{{ s.id }}</td>
+          <td>{{ s.symbol }}</td>
+          <td><span class="badge">{{ s.type }}</span></td>
+          <td>{{ s.created_at }}</td>
+          <td class="mono small">{{ s.tps_hit | tojson }}</td>
+          <td class="mono small">{{ s.entries_hit | tojson }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No signals.</p>
+  {% endif %}
+</section>
+{% endblock %}

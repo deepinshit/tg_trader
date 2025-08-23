@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Telegram Chats · Trading Platform{% endblock %}
+
+{% block content %}
+<h1>Telegram Chats</h1>
+
+<section class="card">
+  {% if chats %}
+    <table>
+      <thead>
+        <tr>
+          <th>Chat</th>
+          <th>Username</th>
+          <th>Signals (24h)</th>
+          <th>Messages</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in chats %}
+        <tr>
+          <td>{{ c.title }}</td>
+          <td class="mono">{{ c.username or "—" }}</td>
+          <td>{{ c.signals_last_24h }}</td>
+          <td>{{ c.message_count }}</td>
+          <td><a class="btn btn-small" href="/tg_chat/{{ c.id }}">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No chats found.</p>
+  {% endif %}
+</section>
+{% endblock %}

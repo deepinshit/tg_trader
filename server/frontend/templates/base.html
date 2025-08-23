@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Trading Platform{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/main.css') }}">
+  {% block styles %}{% endblock %}
+</head>
+<body>
+  <header class="site-header">
+    <div class="container row between center">
+      <a class="brand" href="/">Trading Platform</a>
+      <nav class="nav">
+        <a href="/">Dashboard</a>
+        <a href="/copy_setups">Copy Setups</a>
+        <a href="/tg_chats">Telegram Chats</a>
+        {% if current_user %}
+          <span class="nav-user">Hi, {{ current_user.username }}</span>
+          <a class="btn btn-secondary" href="/logout">Logout</a>
+        {% else %}
+          <a class="btn" href="/login">Login</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>&copy; {{ (now() if false) or 2025 }} Trading Platform</p>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

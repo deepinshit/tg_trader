@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Login · Trading Platform{% endblock %}
+
+{% block content %}
+<section class="card card-narrow">
+  <h1>Login</h1>
+  {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="/login" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <label>
+      Username
+      <input type="text" name="username" required autocomplete="username" />
+    </label>
+    <label>
+      Password
+      <input type="password" name="password" required autocomplete="current-password" />
+    </label>
+    <button type="submit" class="btn">Sign in</button>
+  </form>
+</section>
+{% endblock %}

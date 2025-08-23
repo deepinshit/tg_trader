@@ -1,0 +1,123 @@
+/* =======================
+   TELEGRAM CHATS SELECT
+======================= */
+.tg-container { position: relative; }
+
+#tg-chats {
+  width: 100%;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background-color: #fff;
+}
+
+#toggle-select-chats { margin-top: 0.5rem; }
+
+.tg-count {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #4f46e5;
+  margin-left: 0.5rem;
+}
+
+/* =======================
+   SYMBOL ROWS
+======================= */
+.symbol-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.symbol-row input[type="text"] { flex: 1; }
+.symbol-row .btn-small { flex-shrink: 0; }
+
+/* =======================
+   CHECKGRID
+======================= */
+.checkgrid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.checkgrid li { display: block; }
+.checkgrid label { display: flex; align-items: center; gap: 0.5rem; }
+
+input[type="checkbox"] { width: auto; cursor: pointer; }
+
+/* =======================
+   USER CONFIG CARDS
+======================= */
+.configs-grid { display: grid; gap: 1rem; }
+
+.config-card {
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+
+.config-card[open] { box-shadow: 0 4px 15px rgba(0,0,0,0.1); transform: translateY(-2px); }
+
+.config-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  background-color: #f3f4f6;
+  transition: background 0.2s;
+}
+
+.config-summary:hover { background-color: #e0e7ff; }
+
+.config-toggle { font-size: 0.75rem; color: #6b7280; }
+
+.config-details { padding: 1rem; border-top: 1px solid #d1d5db; }
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.5rem 2rem;
+  margin-bottom: 1rem;
+}
+
+.symbol-mappings { margin-bottom: 1rem; }
+
+.symbol-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.symbol-table th, .symbol-table td {
+  border: 1px solid #d1d5db;
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+
+.symbol-table th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.advanced-options ul {
+  margin: 0.25rem 0 0 1rem;
+  padding-left: 0;
+}
+
+.advanced-options li {
+  list-style: disc;
+  margin-bottom: 0.25rem;
+}
+
+.config-card p.muted {
+  color: #6b7280;
+  font-style: italic;
+}

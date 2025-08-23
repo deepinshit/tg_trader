@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Trading Platform{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="grid grid-3">
+  <div class="stat">
+    <div class="stat-value">{{ stats.active_copy_setups }}</div>
+    <div class="stat-label">Active Copy Setups</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ stats.total_configs }}</div>
+    <div class="stat-label">Configs</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ stats.top_chats|length }}</div>
+    <div class="stat-label">Top Chats</div>
+  </div>
+</div>
+
+<section class="card">
+  <div class="row between center">
+    <h2>Top Chats (24h)</h2>
+    <a class="btn btn-secondary" href="/tg_chats">See all</a>
+  </div>
+  {% if stats.top_chats %}
+    <table>
+      <thead>
+        <tr><th>Chat</th><th>Signals (24h)</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for c in stats.top_chats %}
+        <tr>
+          <td>{{ c.title }}</td>
+          <td>{{ c.signals_last_24h }}</td>
+          <td><a class="btn btn-small" href="/tg_chat/{{ c.id }}">Open</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No recent activity.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <div class="row between center">
+    <h2>Active Copy Setups</h2>
+    <a class="btn btn-secondary" href="/copy_setups">Manage</a>
+  </div>
+  <p class="muted">Go manage your setups and configs.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,115 @@
+
+
+"/" home/dashboard
+    see active copy setups (detail/summary)
+        go to dedicated page (/copy_setups)
+    tg chats top 5 sorted most signals
+        go to dedicated page (/tg_chats)
+
+"/copy_setups"
+    add config
+    add setup (disabled if user has no configs)
+    clickable for dedicated page
+
+"/copy_setup/{id}"
+    see signals
+        each signal list signal replies 
+        include message for each signal/signal_reply
+    session:
+        chat
+            signal  
+                message
+                    logs
+                signal_replies:
+                    message
+                        logs
+                    logs
+                logs
+
+"/tg_chats"
+    see some basic statistics per chat
+        hover or summary detail for quick info
+        clickable for didicated page
+    total signals
+    total messages
+    total active copy_setups
+
+"tg_chat/{id}"
+    see all signals and a chart based on tp and entry layers hit pip calculations etc
+
+    signal  
+        message
+            logs
+        signal_replies:
+            message
+                logs
+            logs
+        logs
+
+
+copy setup
+    logs
+    tg_chats
+        logs
+        messages
+            -> structure:
+                signals  
+                    logs
+                    message
+                    signal_replies
+                        logs
+                        message
+copy_setup
+  - logs
+  - tg_chats 
+tg_chat 
+  - logs
+  - messages 
+message
+  - signal or signal_reply
+  - logs 
+signal_reply
+  - original_signal 
+  - message 
+  - logs
+signal
+  - message
+  - logs
+  - signal replies
+
+
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+async def get_signals_for_copy_setup(session, setup_id: int):
+    stmt = (
+        select(Signal)
+        .join(Signal.message)
+        .join(Message.chat)
+        .where(TgChat.copy_setup_id == setup_id)
+        .options(
+            # signal.logs
+            selectinload(Signal.logs),
+
+            # signal.message.logs
+            selectinload(Signal.message).selectinload(Message.logs),
+
+            # signal.replies + reply.logs + reply.message.logs
+            selectinload(Signal.replies)
+                .selectinload(SignalReply.logs),
+            selectinload(Signal.replies)
+                .selectinload(SignalReply.message)
+                .selectinload(Message.logs),
+        )
+    )
+    result = await session.execute(stmt)
+    return result.scalars().unique().all()
+
+
+signals = await get_signals_for_copy_setup(session, copy_setup.id)
+
+chats_signals: dict[int, list[Signal]] = {}
+
+for sig in signals:
+    chat_id = sig.message.chat_id
+    chats_signals.setdefault(chat_id, []).append(sig)

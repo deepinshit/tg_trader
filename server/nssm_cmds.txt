@@ -1,0 +1,8 @@
+call nssm.exe install tgtrader_app "%cd%\run_tgtrader.bat"
+call nssm.exe set tgtrader_app AppStdout "%cd%\logs\tgtrader_app_logs.log"
+call nssm.exe set tgtrader_app AppStderr "%cd%\logs\tgtrader_app_errors.log"
+call nssm set tgtrader_app AppRotateFiles 5
+call nssm set tgtrader_app AppRotateOnline 1
+call nssm set tgtrader_app AppRotateSeconds 86400
+call nssm set tgtrader_app AppRotateBytes 1048576
+call sc start tgtrader_app

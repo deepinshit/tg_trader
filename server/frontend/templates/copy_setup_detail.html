@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Copy Setup #{{ setup.id }} · Trading Platform{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/copy_setups.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="container">
+  <h1>Copy Setup #{{ setup.id }}</h1>
+    <section class="grid grid-2">
+      <!-- Update Setup -->
+      <div class="card">
+        <h3>Create Setup</h3>
+        <form method="post" action="/copy_setups/create_setup">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+          <label title="Select a configuration for this setup">
+            Config
+            <select name="config_id" required>
+              {% for c in configs %}
+                <option value="{{ c.id }}">{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <!-- Telegram Chats -->
+          <details class="tg-container" title="Choose telegram chats to send signals to">
+            <summary>
+              Telegram Chats (<span id="tg-count">0 selected</span>)
+            </summary>
+            <div class="tg-chats-content">
+              <select id="tg-chats" name="tg_chats[]" multiple>
+                {% for chat in tg_chats %}
+                  <option value="{{ chat.id }}" title="{{ chat.title }} - @{{ chat.username }}">{{ chat.title }} - @{{ chat.username }}</option>
+                {% endfor %}
+              </select>
+              <button type="button" id="toggle-select-chats" class="btn btn-small">Select All</button>
+            </div>
+          </details>
+
+          <button type="submit" class="btn mt-2">Create Setup</button>
+        </form>
+      </div>
+
+  <a class="btn" href="/copy_setups">Back to Setups</a>
+</main>
+{% endblock %}

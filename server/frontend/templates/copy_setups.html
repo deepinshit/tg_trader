@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Copy Setups · Trading Platform{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+<link rel="stylesheet" href="{{ url_for('static', path='css/copy_setups.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="container">
+  <h1>Copy Setups</h1>
+
+  <!-- Your Setups Table -->
+  <section class="card">
+    <h2>Your Setups</h2>
+    {% if setups %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Active</th>
+            <th>Token</th>
+            <th>Config</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in setups %}
+            <tr>
+              <td>#{{ s.id }}</td>
+              <td>{{ "Yes" if s.active else "No" }}</td>
+              <td class="mono" title="Copy setup token">{{ s.cs_token }}</td>
+              <td title="Configuration name">{{ s.config.name }}</td>
+              <td>
+                <a class="btn btn-small" href="/copy_setup/{{ s.id }}" title="Open this setup">Open</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No setups yet.</p>
+    {% endif %}
+  </section>
+  <!-- User Configs -->
+  <section class="card">
+    <h2>Your Configs</h2>
+
+    {% if configs %}
+      <div class="configs-grid">
+        {% for c in configs %}
+          <details class="config-card">
+            <summary class="config-summary">
+              <span class="config-name">{{ c.name }}</span>
+              <span class="config-toggle">▼</span>
+            </summary>
+
+            <div class="config-details">
+
+              <!-- Basic Info Grid -->
+              <div class="config-grid">
+                <div><strong>Lot Mode:</strong> {{ c.lot_mode.name }}</div>
+                {% if c.lot_mode == 'FIXED' %}
+                  <div><strong>Fixed Lot:</strong> {{ c.fixed_lot }}</div>
+                {% endif %}
+                <div><strong>Multiple TP Mode:</strong> {{ c.multiple_tp_mode.name }}</div>
+                <div><strong>Multiple Entry Mode:</strong> {{ c.multiple_entry_mode.name }}</div>
+                <div><strong>Max Risk %:</strong> {{ c.max_risk_perc_from_equity_per_signal }}</div>
+                <div><strong>Max Price Range %:</strong> {{ c.max_price_range_perc or 'N/A' }}</div>
+                <div><strong>Allowed Symbols:</strong> {{ c.allowed_symbols or 'All' }}</div>
+              </div>
+
+              <!-- Symbol Mappings -->
+              <div class="symbol-mappings">
+                <strong>Symbol Mappings:</strong>
+                {% if c.symbols %}
+                  <table class="symbol-table">
+                    <thead>
+                      <tr>
+                        <th>Symbol</th>
+                        <th>Synonyms</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for s, syn in c.symbols.items() %}
+                        <tr>
+                          <td>{{ s }}</td>
+                          <td>{{ syn | join(', ') }}</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                {% else %}
+                  <p class="muted">No symbol mappings</p>
+                {% endif %}
+              </div>
+
+              <!-- Advanced Options -->
+              <div class="advanced-options">
+                <strong>Advanced Options:</strong>
+                {% set adv_opts = [
+                  ('Close on signal reply', c.close_on_signal_reply),
+                  ('Modify on signal reply', c.modify_on_signal_reply),
+                  ('Close on message delete', c.close_on_msg_delete),
+                  ('Ignore prices out of range', c.ignore_prices_out_of_range),
+                  ('Trailing stop on TPs', c.trailingstop_on_tps),
+                  ('Close trades before everyday swap', c.close_trades_before_everyday_swap),
+                  ('Close trades before Wednesday swap', c.close_trades_before_wednesday_swap),
+                  ('Close trades before weekend', c.close_trades_before_weekend),
+                  ('Follow TP/SL hits from others', c.follow_tp_and_sl_hits_from_others)
+                ] %}
+                {% if adv_opts|selectattr('1')|list %}
+                  <ul>
+                    {% for label, enabled in adv_opts %}
+                      {% if enabled %}<li>{{ label }}</li>{% endif %}
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <p class="muted">No advanced options enabled</p>
+                {% endif %}
+              </div>
+
+            </div>
+          </details>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">No configs yet.</p>
+    {% endif %}
+  </section>
+
+
+  <!-- Create Setup & Config -->
+  <section class="grid grid-2">
+
+    <!-- Create Setup -->
+    <div class="card">
+      <h3>Create Setup</h3>
+      <form method="post" action="/copy_setups/create_setup">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <label title="Select a configuration for this setup">
+          Config
+          <select name="config_id" required>
+            {% for c in configs %}
+              <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <!-- Telegram Chats -->
+        <details class="tg-container" title="Choose telegram chats to send signals to">
+          <summary>
+            Telegram Chats (<span id="tg-count">0 selected</span>)
+          </summary>
+          <div class="tg-chats-content">
+            <select id="tg-chats" name="tg_chats[]" multiple>
+              {% for chat in tg_chats %}
+                <option value="{{ chat.id }}" title="{{ chat.title }} - @{{ chat.username }}">{{ chat.title }} - @{{ chat.username }}</option>
+              {% endfor %}
+            </select>
+            <button type="button" id="toggle-select-chats" class="btn btn-small">Select All</button>
+          </div>
+        </details>
+
+        <button type="submit" class="btn mt-2">Create Setup</button>
+      </form>
+    </div>
+
+    <!-- Create Config -->
+    <div class="card">
+      <h3>Create Config</h3>
+      <form method="post" action="/copy_setups/create_config">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <label title="Name of the new configuration">
+          Name
+          <input type="text" name="name" placeholder="Config name" required>
+        </label>
+
+        <!-- Symbol Mappings -->
+        <div id="symbols-container">
+          <label title="Map symbols and their synonyms">
+            Symbol Mappings
+            <button type="button" id="add-symbol" class="btn btn-small mt-2" title="Add another symbol mapping">Add Symbol</button>
+          </label>
+        </div>
+        
+        <label title="Comma separated list of allowed symbols">
+          Allowed symbols
+          <input type="text" name="allowed_symbols" placeholder="Optional">
+        </label>
+
+        <label title="Choose lot calculation mode">
+          Lot mode
+          <select name="lot_mode">
+            <option value="AUTO">AUTO</option>
+            <option value="FIXED">FIXED</option>
+          </select>
+        </label>
+
+        <label title="Fixed lot size (if using FIXED mode)">
+          Fixed lot
+          <input type="number" step="0.01" min="0" name="fixed_lot">
+        </label>
+
+        <label title="Maximum risk per signal as a percentage of equity (0–100)">
+          Max Risk per Signal (%)
+          <input type="number" step="0.01" min="0" max="100" name="max_risk_perc_from_equity_per_signal" value="0">
+        </label>
+
+
+        <label title="Choose how multiple TP targets are handled">
+          Multiple TP mode
+          <select name="multiple_tp_mode">
+            <option value="ALL">ALL</option>
+            <option value="FIRST">FIRST</option>
+            <option value="AVERAGE">AVERAGE</option>
+            <option value="LAST">LAST</option>
+          </select>
+        </label>
+
+        <label title="Choose how multiple entries are handled">
+          Multiple Entry mode
+          <select name="multiple_entry_mode">
+            <option value="ALL">ALL</option>
+            <option value="FIRST">FIRST</option>
+            <option value="AVERAGE">AVERAGE</option>
+            <option value="LAST">LAST</option>
+          </select>
+        </label>
+
+        <!-- Advanced Options -->
+        <details title="Advanced configuration options">
+          <summary>Advanced Options</summary>
+          <div class="grid grid-2">
+            <label title="Close trade when signal reply received"><input type="checkbox" name="close_on_signal_reply"> Close on signal reply</label>
+            <label title="Modify trade when signal reply received"><input type="checkbox" name="modify_on_signal_reply"> Modify on signal reply</label>
+            <label title="Close trade when message deleted"><input type="checkbox" name="close_on_msg_delete"> Close on message delete</label>
+            <label title="Set breakeven when TP layer is hit"><input type="number" name="breakeven_on_tp_layer" placeholder="Breakeven on TP layer"></label>
+            <label title="Close trades before everyday swap"><input type="checkbox" name="close_trades_before_everyday_swap"> Close trades before everyday swap</label>
+            <label title="Close trades before Wednesday swap"><input type="checkbox" name="close_trades_before_wednesday_swap"> Close trades before Wednesday swap</label>
+            <label title="Close trades before weekend"><input type="checkbox" name="close_trades_before_weekend"> Close trades before weekend</label>
+            <label title="Enable trailing stop on TP targets"><input type="checkbox" name="trailingstop_on_tps"> Trailing stop on TPs</label>
+            <label title="% of balance to trigger breakeven"><input type="number" step="0.01" name="tradeprofit_percent_from_balans_for_breakeven" placeholder="% balance for breakeven"></label>
+            <label title="Expire pending trades after X minutes"><input type="number" name="expire_minutes_pending_trade" placeholder="Expire pending trade (min)"></label>
+            <label title="Expire active trades after X minutes"><input type="number" name="expire_minutes_active_trade" placeholder="Expire active trade (min)"></label>
+            <label title="Expire trades if TP hit before entry"><input type="number" name="expire_at_tp_hit_before_entry" placeholder="Expire at TP hit before entry (min)"></label>
+            <label title="Follow TP/SL hits from other setups"><input type="checkbox" name="follow_tp_and_sl_hits_from_others"> Follow TP/SL hits from others</label>
+            <label title="Ignore trades with prices out of range"><input type="checkbox" name="ignore_prices_out_of_range" checked> Ignore prices out of range</label>
+            <label title="Maximum allowed price range as a percentage (0–100)">
+              Max Price Range (%)
+              <input type="number" step="0.01" min="0" max="100" name="max_price_range_perc" placeholder="Optional">
+            </label>
+          </div>
+        </details>
+
+        <button type="submit" class="btn mt-2">Create Config</button>
+      </form>
+    </div>
+
+  </section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+<script src="{{ url_for('static', path='js/copy_setups.js') }}"></script>
+
+{% endblock %}
