@@ -3,7 +3,7 @@
 import logging
 from typing import Dict, Set, Tuple, Optional
 
-from models import Message, SignalReply, Signal
+from models import Message, Signal, SignalReply
 from enums import SignalReplyAction, SignalReplyGeneratedBy
 from backend.db.crud.general import create, update
 from backend.db.functions import AsyncSession
@@ -22,10 +22,10 @@ async def process_updated_message(
     Handle an edited Telegram message.
 
     Returns:
-        Tuple[Optional[Signal], Optional[SignalReply]]: The updated/created Signal and SignalReply.
+        Tuple[Optional[Signal], Optional[SignalReply]]: The updated/created Signal and SignalReply (always None here).
     Raises:
         ValueError: if message text is invalid or no signal is extracted.
-        Exception: for DB errors or other unexpected failures.
+        Exception: for DB errors.
     """
     if not message_text or not message_text.strip():
         raise ValueError("Updated message text is empty or invalid")
@@ -83,12 +83,12 @@ async def process_deleted_message(
 async def process_new_message(
     message: Message,
     session: AsyncSession
-) -> Signal:
+) -> Tuple[Optional[Signal], Optional[SignalReply]]:
     """
     Process a newly received Telegram message for trading signals.
 
     Returns:
-        Signal: The created signal.
+        Tuple[Optional[Signal], Optional[SignalReply]]: The created Signal and None for SignalReply.
     Raises:
         ValueError: if no valid signal is extracted.
         Exception: for DB errors.
@@ -103,19 +103,19 @@ async def process_new_message(
     signal = await create(signal, session)
     message.signal_id = signal.id
     await update(message, session)
-    return signal
+    return signal, None
 
 
 async def process_reply_message(
     message: Message,
     reply_to_message: Message,
     session: AsyncSession
-) -> SignalReply:
+) -> Tuple[Optional[Signal], Optional[SignalReply]]:
     """
     Process a reply message to detect and record signal-reply actions.
 
     Returns:
-        SignalReply: The created signal reply.
+        Tuple[Optional[Signal], Optional[SignalReply]]: None for Signal and the created SignalReply.
     Raises:
         ValueError: if original message has no signal or reply action cannot be determined.
         Exception: for DB errors.
@@ -137,4 +137,4 @@ async def process_reply_message(
     signal_reply = await create(signal_reply, session)
     message.signal_reply_id = signal_reply.id
     await update(message, session)
-    return signal_reply
+    return None, signal_reply
