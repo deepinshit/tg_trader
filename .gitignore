@@ -24,3 +24,7 @@ Thumbs.db
 
 # Local settings
 .env.local
+
+# Telethon session file
+.session
+.session-journal
