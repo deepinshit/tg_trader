@@ -3,6 +3,7 @@ import asyncio
 import sys
 import time
 from typing import Any
+import io
 
 from fastapi import FastAPI
 from uvicorn import Server, Config
@@ -24,6 +25,7 @@ class ExtraFormatter(logging.Formatter):
     converter = time.gmtime  
     def format(self, record: logging.LogRecord) -> str:
         s = super().format(record)
+        s = s.encode('utf-8', errors='replace').decode('utf-8')
         standard_attrs = set(logging.makeLogRecord({}).__dict__.keys())
         ignore = standard_attrs | {"message", "asctime"}
         extras = {k: v for k, v in record.__dict__.items() if k not in ignore}
@@ -35,8 +37,10 @@ class ExtraFormatter(logging.Formatter):
 formatter = ExtraFormatter(
     '[%(asctime)s] [%(levelname)s] [%(name)s:%(lineno)d in %(funcName)s()] - %(message)s'
 )
+# Wrap NSSM pipes in UTF-8 TextIO
+stdout_handler = logging.StreamHandler(io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace"))
+stderr_handler = logging.StreamHandler(io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace"))
 
-stderr_handler = logging.StreamHandler(sys.stderr)
 stderr_handler.setLevel(logging.WARNING)
 stderr_handler.setFormatter(formatter)
 
@@ -44,7 +48,6 @@ class MaxLevelFilter(logging.Filter):
     def __init__(self, max_level): self.max_level = max_level
     def filter(self, record): return record.levelno <= self.max_level
 
-stdout_handler = logging.StreamHandler(sys.stdout)
 stdout_handler.addFilter(MaxLevelFilter(logging.INFO))
 stdout_handler.setLevel(logging.DEBUG)
 stdout_handler.setFormatter(formatter)

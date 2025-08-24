@@ -2,11 +2,15 @@
 import logging
 from typing import List, Sequence, Optional, Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
 from api.schemes import Session, Trade as TradeScheme
 from backend.redis.store import RedisStore
-from models import Signal
+from models import Signal, Message, CopySetup, TgChat
 from backend.distribution.mt5_trade import _generate_trades
 from backend.distribution.helpers import create_trade_scheme
+from backend.db.functions import get_session_context
 
 __all__ = ["distribute_signal"]
 
@@ -41,6 +45,18 @@ async def distribute_signal(signal: Signal) -> None:
             extra={"signal_id": None},
         )
         return
+    
+    async with get_session_context() as session:
+        stmt = (
+            select(Signal)
+            .options(
+                selectinload(Signal.message).selectinload(Message.tg_chat)
+                .selectinload(TgChat.copy_setups).selectinload(CopySetup.config)
+            )
+            .where(Signal.id == signal.id)  # or whatever identifier you have
+        )
+        result = await session.execute(stmt)
+        signal: Signal | None = result.scalars().first()
 
     # Resolve copy setups defensively to avoid AttributeErrors if any linkage is missing.
     copy_setups: Sequence[Any] = []

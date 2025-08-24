@@ -84,8 +84,8 @@ async def process_updated_message(message_text: str, original_message: Message) 
             else:
                 # Update existing related signal with freshly parsed data.
                 # Keep the assignment pattern to respect existing architecture.
+                signal = await update(signal, session)
                 original_message.signal = signal
-                await update(original_message.signal, session)
                 logger.info(
                     "Signal updated from edited message.",
                     extra={
@@ -241,7 +241,7 @@ async def process_new_message(message: Message) -> None:
             },
         )
 
-    logger.info("distributing signal reply..", extra={
+    logger.info("distributing signal..", extra={
                 "message_id": getattr(message, "id", None),
                 "signal_id": getattr(message.signal, "id", None),
             })
@@ -250,7 +250,7 @@ async def process_new_message(message: Message) -> None:
         await distribute_signal(signal)
     except Exception as e:
         logger.exception(
-            "Error distributing signal reply.",
+            "Error distributing signal.",
             extra={
                 "message_id": getattr(message, "id", None),
                 "signal_id": getattr(message.signal, "id", None),

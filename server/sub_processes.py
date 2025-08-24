@@ -1,9 +1,12 @@
 import asyncio
 import aiohttp
 import logging
+from pathlib import Path
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+NGROK_PATH = r"C:\ngrok-v3-stable-windows-amd64\ngrok.exe"#Path(r"C:\ngrok-v3-stable-windows-amd64\ngrok.exe")
 
 
 async def start_redis(retries: int = 3, delay: float = 2.0) -> Optional[asyncio.subprocess.Process]:
@@ -35,19 +38,22 @@ async def start_ngrok(port: int = 8000, retries: int = 5, delay: float = 2.0) ->
     Start ngrok on the given port and return (public_url, process).
     If it fails, returns (None, None).
     """
-    process: Optional[asyncio.subprocess.Process] = None
+    if not NGROK_PATH.exists():
+        logger.error("Ngrok executable not found at %s", NGROK_PATH)
+        return None, None
+
     try:
         process = await asyncio.create_subprocess_exec(
-            "ngrok", "http", str(port),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.STDOUT,
+            str(NGROK_PATH), "http", str(port), "--log", "stdout",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(NGROK_PATH.parent)
         )
 
-        # Poll ngrok API until it’s ready or retries run out
         url: Optional[str] = None
         for attempt in range(1, retries + 1):
+            await asyncio.sleep(delay)
             try:
-                await asyncio.sleep(delay)
                 async with aiohttp.ClientSession() as session:
                     async with session.get("http://127.0.0.1:4040/api/tunnels") as resp:
                         data = await resp.json()
@@ -59,8 +65,10 @@ async def start_ngrok(port: int = 8000, retries: int = 5, delay: float = 2.0) ->
                     f"Ngrok tunnel not ready (attempt {attempt}/{retries})",
                     extra={"component": "ngrok"},
                 )
+
         logger.error("Ngrok failed to provide a tunnel.", extra={"component": "ngrok"})
         return None, process
+
     except Exception as e:
         logger.exception("Failed to start ngrok", extra={"component": "ngrok", "error": str(e)})
         return None, None

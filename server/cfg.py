@@ -16,4 +16,4 @@ MAX_EXCEPTIONS_FOR_AI_SIGNAL_EXTRACTION = 3
 
 PRODUCTION = False
 
-START_NGROK = True # create public https url to project app
+START_NGROK = False # create public https url to project app

@@ -86,47 +86,37 @@ async def read(
 # --------------------------------------------------------------------------------------
 # UPDATE
 # --------------------------------------------------------------------------------------
-async def update(
-    model: Type[T],
-    object_id: int,
-    data: dict[str, Any],
-    session: AsyncSession,
-) -> Optional[T]:
+async def update(instance: T, session: AsyncSession) -> T:
     """
-    Update an existing row with provided data.
+    Persist changes to an existing SQLAlchemy model instance.
 
-    - Fetches DB object by `object_id`.
-    - Applies only provided fields (ignores 'id').
-    - Flushes and refreshes.
+    - Flushes and refreshes the instance.
+    - Does not modify any attributes (assumes instance is already updated).
 
     Args:
-        model: DeclarativeBase subclass.
-        object_id: Primary key of row to update.
-        data: Dict of fields to update.
+        instance: SQLAlchemy model instance to persist.
         session: AsyncSession.
 
     Returns:
-        Updated object or None if not found.
+        The persisted instance.
     """
     try:
-        db_object = await session.get(model, object_id)
-        if not db_object:
-            logger.debug("No %s found for id=%s; update skipped", model.__name__, object_id)
-            return None
-
-        for key, value in data.items():
-            if key != "id" and hasattr(db_object, key):
-                setattr(db_object, key, value)
-
-        session.add(db_object)
+        session.add(instance)
         await session.flush()
-        await session.refresh(db_object)
-        logger.debug("Updated %s id=%s with fields: %s", model.__name__, object_id, list(data.keys()))
-        return db_object
+        await session.refresh(instance)
+        logger.debug(
+            "Saved %s id=%s",
+            instance.__class__.__name__,
+            getattr(instance, "id", None),
+        )
+        return instance
     except SQLAlchemyError:
-        logger.exception("Error updating %s id=%s", model.__name__, object_id)
+        logger.exception(
+            "Error saving %s id=%s",
+            instance.__class__.__name__,
+            getattr(instance, "id", None),
+        )
         raise
-
 
 # --------------------------------------------------------------------------------------
 # DELETE
