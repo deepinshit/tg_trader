@@ -3,21 +3,65 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import List, Tuple, Iterable, Optional, Union
+from typing import List, Tuple, Iterable, Optional, Union, Dict
 
 from enums import OrderType
 from backend.extract.exceptions import PriceNormalizationError
+from backend.extract.extract_models import SignalBase
+from models import Signal
 
 __all__ = ["normalize_prices"]
 
 logger = logging.getLogger(__name__)
 
 
+def clean_signal_base(sb: SignalBase, allowed_symbols_map: Dict[str, List[str]]) -> SignalBase:
+    # Map any synonym in sb.symbols to its canonical base key
+    mapped = {
+        key
+        for sym in sb.symbols
+        for key, synonyms in allowed_symbols_map.items()
+        if sym in synonyms
+    }
+    sb.symbols = list(mapped)
+
+    # Deduplicate other lists (order not important → sets are fine)
+    unique_types = set(sb.types)
+    clean_types = []
+    for unique_type in unique_types:
+        try:
+            clean_types.append(
+                _validate_order_type(unique_type)
+            )
+        except Exception as e:
+            logger.error(f"invalid order type: {unique_type} for signal: {e}", extra={"error_type": type(e)})
+    sb.sl_prices = list(set(sb.sl_prices))
+    sb.tp_prices = list(set(sb.tp_prices))
+    sb.entry_prices = list(set(sb.entry_prices))
+    return sb
+
+def normalize_signal_base(sb: SignalBase) -> Signal:
+    symbol = sb.symbols[0]
+    type = sb.types[0]
+    entries, tps, sls = normalize_prices(
+        type, 
+        sb.entry_prices,
+        sb.tp_prices,
+        sb.sl_prices
+    )
+    return Signal(
+        symbol=symbol,
+        type=type,
+        entry_prices=entries,
+        tp_prices=tps,
+        sl_price=sls[0]
+    )
+
 def normalize_prices(
     order_type: OrderType,
-    sl_prices: List[float],
     entry_prices: List[float],
     tp_prices: List[float],
+    sl_prices: List[float],
     *,
     model_name_id: Optional[Union[int, str]] = None,
 ) -> Tuple[List[float], List[float], List[float]]:
@@ -52,18 +96,15 @@ def normalize_prices(
     """
     extra = {"model_name_id": model_name_id} if model_name_id is not None else None
 
-    _validated_order_type = _validate_order_type(order_type, extra=extra)
-
     # Coerce and defensively validate inputs without changing the public API.
     # None values (if ever passed) are treated as empty lists.
     sl_list = _coerce_price_list("sl_prices", sl_prices, extra=extra)
     entry_list = _coerce_price_list("entry_prices", entry_prices, extra=extra)
     tp_list = _coerce_price_list("tp_prices", tp_prices, extra=extra)
 
-    normalized_entries, normalized_tps = _sort_prices(
-        _validated_order_type, entry_list, tp_list, extra=extra
+    normalized_entries, normalized_tps, normalized_sls = _sort_prices(
+        order_type, entry_list, tp_list, sl_list, extra=extra
     )
-    normalized_sls = sorted(sl_list)
 
     logger.debug(
         "Price normalization completed: entries=%s, tps=%s, sls=%s",
@@ -74,56 +115,47 @@ def normalize_prices(
     )
     return normalized_entries, normalized_tps, normalized_sls
 
-
 def _sort_prices(
     order_type: OrderType,
     entries: List[float],
     tps: List[float],
+    sls: List[float],
     *,
     extra: Optional[dict] = None,
-) -> Tuple[List[float], List[float]]:
+) -> Tuple[List[float], List[float], List[float]]:
     """
-    Sort entry and TP prices based on order type (logic unchanged).
+    Sort entry, TP, and SL prices based on order type.
 
     Entries:
       - BUY  → descending (layer 1 = highest price)
       - SELL → ascending  (layer 1 = lowest  price)
 
     TPs:
-      - Sort ascending, then reverse for SELL (so that TP1 is closest for SELL).
+      - BUY  → ascending
+      - SELL → descending (TP1 closest to entry)
 
-    Args:
-        order_type: The order side (BUY/SELL).
-        entries: List of entry prices.
-        tps: List of take-profit prices.
-        extra: Optional logging `extra` (e.g., {"model_name_id": <id>}).
-
-    Returns:
-        (entries_sorted, tps_sorted)
+    SLs:
+      - BUY  → descending
+      - SELL → ascending (SL1 closest to entry)
     """
-    if not entries:
-        entries_sorted: List[float] = []
-    else:
-        entries_sorted = sorted(entries)
-        if order_type == OrderType.BUY:
-            entries_sorted = entries_sorted[::-1]
-
-    if not tps:
-        tps_sorted: List[float] = []
-    else:
-        tps_sorted = sorted(tps)
-        if order_type == OrderType.SELL:
-            tps_sorted = tps_sorted[::-1]
+    if order_type == OrderType.BUY:
+        entries_sorted = sorted(entries, reverse=True)
+        tps_sorted     = sorted(tps)
+        sls_sorted     = sorted(sls, reverse=True)
+    else:  # SELL
+        entries_sorted = sorted(entries)   # low → high
+        tps_sorted     = sorted(tps, reverse=True)
+        sls_sorted     = sorted(sls)      # low → high
 
     logger.debug(
-        "Sorted prices: entries_sorted=%s, tps_sorted=%s (order_type=%s)",
+        "Sorted prices: entries=%s, tps=%s, sls=%s (order_type=%s)",
         entries_sorted,
         tps_sorted,
+        sls_sorted,
         getattr(order_type, "name", str(order_type)),
         extra=extra,
     )
-    return entries_sorted, tps_sorted
-
+    return entries_sorted, tps_sorted, sls_sorted
 
 # -------------------------
 # Internal helpers (private)
@@ -166,16 +198,14 @@ def _coerce_price_list(
         if isinstance(value, (int, float)):
             f = float(value)
             if not math.isfinite(f):
-                logger.error(
+                logger.debug(
                     "Non-finite price in %s at index %d: %r", name, idx, value, extra=extra
                 )
-                raise PriceNormalizationError(
-                    f"Non-finite price in {name} at index {idx}: {value!r}"
-                )
+                continue
             cleaned.append(f)
         else:
             # Keep behavior strict and explicit to avoid silent data issues in production.
-            logger.error(
+            logger.debug(
                 "Unsupported price type in %s at index %d: %r (type=%s)",
                 name,
                 idx,
@@ -183,9 +213,6 @@ def _coerce_price_list(
                 type(value).__name__,
                 extra=extra,
             )
-            raise PriceNormalizationError(
-                f"Unsupported price type in {name} at index {idx}: {value!r}"
-            )
-
+            continue
     logger.debug("Coerced %s → %s", name, cleaned, extra=extra)
     return cleaned

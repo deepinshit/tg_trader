@@ -144,7 +144,7 @@ async def _get_structured_output_from_ai(
         try:
             response = await _call_openai_parse(
                 input_prompts=input_prompts,
-                schema_cls=schema_cls,
+                schema_cls=scheme_model,
             )
 
             # The SDK is expected to return `output_parsed` containing the schema instance.

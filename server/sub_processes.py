@@ -14,7 +14,7 @@ async def start_redis(retries: int = 3, delay: float = 2.0) -> Optional[asyncio.
     for attempt in range(1, retries + 1):
         try:
             process = await asyncio.create_subprocess_exec(
-                "redis-server",
+                "memurai",
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.STDOUT,
             )

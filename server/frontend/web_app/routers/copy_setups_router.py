@@ -12,8 +12,7 @@ from backend.db.crud.copy_setup import get_copy_setups_on_user_id
 from backend.db.crud.copy_setup_config import get_copy_setup_configs_on_user_id
 from auth.csrf import generate_csrf_token, validate_csrf
 from auth.tokens import generate_cs_token
-from models import User, CopySetup, CopySetupConfig, TgChat
-from model_links import CopySetupTgChatLink
+from models import User, CopySetup, CopySetupConfig, TgChat, CopySetupTgChatLink
 from enums import LotMode, MultipleTPMode, MultipleEntryMode, TgChatType, UserRole
 
 

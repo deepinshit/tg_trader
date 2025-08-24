@@ -15,3 +15,5 @@ ADMIN_PW = os.getenv("ADMIN_PW", "admin123")
 MAX_EXCEPTIONS_FOR_AI_SIGNAL_EXTRACTION = 3
 
 PRODUCTION = False
+
+START_NGROK = True # create public https url to project app

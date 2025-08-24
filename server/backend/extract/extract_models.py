@@ -18,7 +18,7 @@ Notes:
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -74,7 +74,7 @@ class SignalBase(BaseModel):
     """
 
     symbols: List[str] = Field(..., description="Instrument symbols.")
-    types: List[OrderType] = Field(..., description="Order types for each symbol.")
+    types: List[Union[OrderType, Literal["BUY", "SELL"]]] = Field(..., description="Order types for each symbol.")
     entry_prices: List[float] = Field(..., description="Entry prices per symbol.")
     tp_prices: List[float] = Field(..., description="Take-profit prices per symbol.")
     sl_prices: List[float] = Field(..., description="Stop-loss prices per symbol.")

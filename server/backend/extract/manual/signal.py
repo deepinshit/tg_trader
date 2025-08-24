@@ -22,10 +22,9 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional, Union
+from typing import Optional, Union, Iterable
 
 from backend.extract.extract_models import SignalBase
-from backend.extract.validation import is_valid_symbol
 from enums import OrderType
 
 __all__ = ["extract_signal_manual"]
@@ -77,14 +76,14 @@ async def extract_signal_manual(text: str, allowed_symbol_names) -> SignalBase:
 
     def parse_price(word: str) -> Optional[float]:
         """Try to parse a numeric price from the given token."""
-        if len(word) <= 1:
+        if len(word) < 1:
             return None
         try:
             value = float(word.replace(",", "."))
             if not math.isfinite(value):
                 return None
             return value
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return None
 
     def update_price_type(word: str) -> bool:
@@ -95,6 +94,15 @@ async def extract_signal_manual(text: str, allowed_symbol_names) -> SignalBase:
                 current_price_type = k
                 return True
         return False
+    
+    def is_valid_symbol(word: str, allowed_symbol_names: Iterable[str] = []) -> bool:
+        """
+        Fast membership check against the provided allow-list of symbol names.
+        """
+        if allowed_symbol_names:
+            return word in allowed_symbol_names
+        else:
+            return True
 
     for raw_word in cleaned.split():
         word = raw_word.strip()

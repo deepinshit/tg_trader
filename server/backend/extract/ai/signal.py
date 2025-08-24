@@ -75,7 +75,7 @@ async def extract_signal_ai(
     # Construct the prompt exactly as before (no architectural/logic change).
     prompt_list: List[Dict[str, str]] = [
         {"role": "system", "content": f"{EXTRACT_SIGNAL_PROMPT}"},
-        {"role": "user", "content": f"reply text: {text_stripped}"},
+        {"role": "user", "content": f"extract_text: {text_stripped}"},
     ]
 
     # Avoid logging the complete prompt or user text; keep logs minimal & safe.

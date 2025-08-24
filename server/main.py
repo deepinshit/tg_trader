@@ -15,7 +15,7 @@ from backend.messages.tg.handlers import register_handlers
 from background_tasks import shutdown_background_tasks
 from backend.db.crud.user import get_or_create_admin
 from backend.messages.tg.functions import update_dialogs
-
+from cfg import START_NGROK
 from sub_processes import start_redis, start_ngrok, stop_process
 
 
@@ -55,6 +55,27 @@ root_logger.handlers.clear()
 root_logger.addHandler(stdout_handler)
 root_logger.addHandler(stderr_handler)
 
+# === Silence 3rd-party INFO/DEBUG logs fully === 
+noisy_loggers = [
+    "python_multipart.multipart", 
+    "aiosqlite", 
+    "sqlalchemy", "sqlalchemy.engine", 
+    "httpx", 
+    "telethon", "telethon.network", "telethon.network.mtprotosender", 
+    "openai", "openai._base_client", 
+    "httpcore", "httpcore.connection", "httpcore.http11", 
+    "sqlalchemy.engine.Engine", "sqlalchemy.pool" 
+] 
+for name in noisy_loggers: 
+    logger = logging.getLogger(name) 
+    # 🔥 Remove all existing handlers 
+    while logger.handlers: 
+        handler = logger.handlers.pop() 
+        logger.removeHandler(handler) 
+        # 🔒 Only allow WARNING and above 
+    logger.setLevel(logging.WARNING) # 👂 Let messages propagate to your root logger 
+    logger.propagate = True
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -88,7 +109,8 @@ async def main():
             async def init_ngrok():
                 nonlocal ngrok_url, ngrok_proc
                 ngrok_url, ngrok_proc = await start_ngrok(8000)
-            tg.create_task(init_ngrok())
+            if START_NGROK:
+                tg.create_task(init_ngrok())
 
             # Database setup
             db_setup_task = tg.create_task(setup_db())

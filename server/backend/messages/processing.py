@@ -40,9 +40,9 @@ async def process_updated_message(message_text: str, original_message: Message) 
         )
         return
 
-    # Clone to avoid mutating the original object while parsing.
-    updated_msg = original_message.model_copy()
+    updated_msg = original_message
     updated_msg.text = message_text
+
 
     # Be tolerant if chat/copy_setups is missing/None.
     copy_setups = getattr(getattr(original_message, "tg_chat", None), "copy_setups", None)

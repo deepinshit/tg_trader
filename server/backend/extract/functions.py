@@ -27,9 +27,9 @@ from typing import Dict, List, Optional, Set
 from backend.extract.ai.signal import extract_signal_ai
 from backend.extract.manual.signal import extract_signal_manual
 from backend.extract.manual.signal_reply import extract_signal_reply_action_manual
-from backend.extract.normalization import normalize_prices
+from backend.extract.normalization import clean_signal_base, normalize_signal_base
 from backend.extract.filtering import filter_invalid_prices
-from backend.extract.validation import validate_prices
+from backend.extract.validation import validate_signal_base
 from backend.extract.extract_models import SignalBase, SignalReplyBase  # noqa: F401 (kept for architecture consistency)
 from cfg import MAX_EXCEPTIONS_FOR_AI_SIGNAL_EXTRACTION
 from enums import OrderType  # noqa: F401 (type retained for downstream compatibility)
@@ -76,9 +76,27 @@ async def get_signal_from_text(
     - Exceptions from manual/AI extraction are logged and result in `None`,
       except when AI extraction returns a structure that still fails validation:
       in that case, an ExceptionGroup is raised (unchanged from original logic).
+
+
+
+
+
+    extract manual
+    normalize
+        all values unique
+        symbol mapped
+        prices sorted
+    validate
+        each field has at least 1 value, only some multiple.
+    extract ai
+    normalize
+    validate
+
+    filtering prices on distribution level
+    validating prices on trade level 
     """
     # Prepare structured logging "extra" with the related DB model id
-    msg_extra = {"model_name_id": message.id}
+    msg_extra = {"message_id": message.id}
 
     # Defensive read/early exit on empty text
     text: str = (message.text or "").strip()
@@ -104,123 +122,74 @@ async def get_signal_from_text(
         )
         return None
 
-    if signal_base is None:
+    if signal_base is None: # impossible
         logger.debug("Manual extraction returned None.", extra=msg_extra)
         return None
-
-    # -------------------------------
-    # Normalization helper
-    # -------------------------------
-    def normalize_signal_base(sb: SignalBase) -> SignalBase:
-        # Map any synonym in sb.symbols to its canonical base key while preserving order
-        mapped_in_order: List[str] = [
-            key
-            for sym in sb.symbols
-            for key, synonyms in allowed_symbols_map.items()
-            if sym in synonyms
-        ]
-        # Deduplicate while preserving encounter order
-        sb.symbols = list(dict.fromkeys(mapped_in_order))
-
-        # Deduplicate other lists while preserving order
-        sb.types = list(dict.fromkeys(sb.types))
-        sb.sl_prices = list(dict.fromkeys(sb.sl_prices))
-        sb.tp_prices = list(dict.fromkeys(sb.tp_prices))
-        sb.entry_prices = list(dict.fromkeys(sb.entry_prices))
-        return sb
-
-    # -------------------------------
-    # Validation helper
-    # -------------------------------
-    def validate_signal_base(sb: SignalBase) -> List[Exception]:
-        errors: List[Exception] = []
-        if len(sb.symbols) != 1:
-            errors.append(ValueError("Invalid symbol: must have exactly 1."))
-        if len(sb.types) != 1:
-            errors.append(ValueError("Invalid order type: must have exactly 1."))
-        if len(sb.sl_prices) != 1:
-            errors.append(ValueError("Invalid stop loss: must have exactly 1."))
-        if not sb.tp_prices:
-            errors.append(ValueError("Invalid take profits: must have ≥1."))
-        if not sb.entry_prices:
-            errors.append(ValueError("Invalid entry prices: must have ≥1."))
-        return errors
+    
+    logger.info(f"manual extracted signal: {signal_base}", extra=msg_extra)
 
     # Step 2 — Normalize + validate manual extraction
-    signal_base = normalize_signal_base(signal_base)
+    signal_base = clean_signal_base(signal_base, allowed_symbols_map)
     errors = validate_signal_base(signal_base)
-
     if errors:
+        fallback_to_ai = len(errors) < MAX_EXCEPTIONS_FOR_AI_SIGNAL_EXTRACTION
         # Keep errors in debug; they are expected during coarse manual parse
-        logger.debug("Manual extraction validation errors: %s", errors, extra=msg_extra)
+        logger.info(f"got {len(errors)} (fallback_to_ai={fallback_to_ai}) Manual extraction validation errors: {','.join(errors)}", extra=msg_extra)
 
-    # Step 3 — Fallback to AI if "signal-ish" but incomplete
-    if len(errors) < MAX_EXCEPTIONS_FOR_AI_SIGNAL_EXTRACTION:
-        logger.debug("Attempting AI extraction fallback.", extra=msg_extra)
-        try:
-            ai_signal_base = await extract_signal_ai(text)
-        except Exception as e:
-            logger.exception(
-                "Error during AI signal extraction.",
-                extra={**msg_extra, "error_type": type(e).__name__},
-            )
+        # Step 3 — Fallback to AI if "signal-ish" but incomplete
+        if not fallback_to_ai:
             return None
+        else:
+            signal_base: Optional[SignalBase] = None
+            logger.debug("Attempting AI extraction fallback.", extra=msg_extra)
 
-        if ai_signal_base is None:
-            logger.debug("AI extraction returned None.", extra=msg_extra)
-            return None
+            try:
+                signal_base = await extract_signal_ai(text)
+            except Exception as e:
+                logger.exception(
+                    "Error during AI signal extraction.",
+                    extra={**msg_extra, "error_type": type(e).__name__},
+                )
+                return None
 
-        signal_base = normalize_signal_base(ai_signal_base)
-        errors = validate_signal_base(signal_base)
+            if signal_base is None:
+                logger.debug("AI extraction returned None.", extra=msg_extra)
+                return None
+            
+            logger.info(f"AI extracted signal: {signal_base}", extra=msg_extra)
 
-        if errors:
-            # Preserve original behavior: surface aggregated validation failure
-            logger.error("Validation errors after AI extraction: %s", errors, extra=msg_extra)
-            raise ExceptionGroup("Validation errors after AI extraction", errors)
-    else:
-        logger.debug("Too many manual extraction errors — skipping AI fallback.", extra=msg_extra)
-        return None
-
-    # Step 4 — Final normalization & validation of prices
-    order_type = signal_base.types[0]          # type: ignore[assignment]
-    symbol = signal_base.symbols[0]
-
+            # Step 2 — Normalize + validate manual extraction
+            signal_base = clean_signal_base(signal_base, allowed_symbols_map)
+            errors = validate_signal_base(signal_base)
+            if errors:
+                # Keep errors in debug; they are expected during coarse manual parse
+                logger.info(f"got {len(errors)} AI extraction validation errors: {','.join(errors)}", extra=msg_extra)
+                return None
+            
     try:
-        entries, tps, sls = normalize_prices(
-            order_type,
-            signal_base.sl_prices,
-            signal_base.entry_prices,
-            signal_base.tp_prices,
+        normalized_signal: Signal = normalize_signal_base(signal_base)
+
+        # Filter entries & TPs based on SL
+        filtered_entries, filtered_tps = filter_invalid_prices(
+            order_type=normalized_signal.type,
+            sl_price=normalized_signal.sl_price,
+            entry_prices=normalized_signal.entry_prices,
+            tp_prices=normalized_signal.tp_prices
         )
-        # Keep non-fatal filtering; invalid values are dropped, not raised
-        entries, tps, sls = filter_invalid_prices(
-            order_type, sls, entries, tps, raise_on_invalid=False
-        )
-        # Final, strict validation
-        validate_prices(order_type, sls, entries, tps)
     except Exception as e:
         logger.exception(
-            "Price normalization/validation failed.",
-            extra={**msg_extra, "error_type": type(e).__name__},
+            "Exception while normalizing and filtering SignalBase -> Signal",
+            extra={**msg_extra, "error": str(e), "error_type": type(e).__name__},
         )
         return None
 
-    if len(sls) != 1:
-        logger.error(
-            "Final SL validation failed: must have exactly 1 stop loss.",
-            extra=msg_extra,
-        )
-        return None
-
-    logger.debug("Signal successfully extracted.", extra=msg_extra)
-
-    return Signal(
-        symbol=symbol,
-        type=order_type,      # OrderType or equivalent as produced upstream
-        entry_prices=entries,
-        tp_prices=tps,
-        sl_price=sls[0],
+    # ✅ Safely create a new instance
+    new_signal = normalized_signal.copy(
+        entry_prices=filtered_entries,
+        tp_prices=filtered_tps
     )
+
+    return new_signal
 
 
 async def get_signal_reply_action_from_text(
