@@ -1,7 +1,7 @@
 # backend/messages/tg/handlers.py
 
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 from datetime import timezone
 
 from sqlalchemy.exc import IntegrityError
@@ -38,6 +38,8 @@ async def message_edited_event_handler(event: MessageEdited.Event) -> None:
         logger.info("Message filtered out (empty or invalid).", extra={"tg_chat_id": event.chat_id})
         return
 
+    signal, signal_reply = None, None
+
     try:
         async with get_session_context() as session:
             async with session.begin():
@@ -47,6 +49,7 @@ async def message_edited_event_handler(event: MessageEdited.Event) -> None:
                     return
 
                 original_message = await get_message_on_tg_chat_and_msg_id(session, tg_chat.id, tg_message.id)
+
                 post_datetime = tg_message.date.replace(tzinfo=timezone.utc) if tg_message.date.tzinfo is None else tg_message.date.astimezone(timezone.utc)
 
                 if original_message is None:
@@ -58,34 +61,30 @@ async def message_edited_event_handler(event: MessageEdited.Event) -> None:
                         tg_chat=tg_chat,
                     )
                     message = await session.merge(message)
-                    logger.info(
-                        "Created message due to edit event (message not found previously).",
-                        extra={"tg_chat_id": tg_chat.id},
-                    )
-                    signal = await process_new_message(message, session)
-                    # distribute new signal
-                    try:
-                        await distribute_signal(signal)
-                        logger.info("Signal distributed.", extra={"message_id": message.id, "signal_id": signal.id})
-                    except Exception as e:
-                        logger.exception("Error distributing signal", extra={"message_id": message.id, "signal_id": signal.id})
+                    logger.info("Created message due to edit event (not found previously).", extra={"tg_chat_id": tg_chat.id})
+                    signal, signal_reply = await process_new_message(message, session)
                 else:
-                    signal, _ = await process_updated_message(msg_text, original_message, session)
-                    try:
-                        if signal:
-                            await distribute_signal(signal)
-                            logger.info("Updated signal distributed.", extra={"message_id": original_message.id, "signal_id": signal.id})
-                    except Exception as e:
-                        logger.exception("Error distributing updated signal", extra={"message_id": original_message.id, "signal_id": signal.id})
-
-    except Exception as e:
+                    signal, signal_reply = await process_updated_message(msg_text, original_message, session)
+    except Exception:
         logger.exception("Error handling message edited event.", extra={"tg_chat_id": event.chat_id})
+        return
+
+    # Distribution outside session
+    try:
+        if signal:
+            await distribute_signal(signal)
+        if signal_reply:
+            await distribute_signal_reply(signal_reply)
+    except Exception:
+        logger.exception("Error distributing signal or signal reply.", extra={"tg_chat_id": event.chat_id})
 
 
 async def message_deleted_event_handler(event: MessageDeleted.Event) -> None:
     if not event.chat_id:
         logger.debug("Skipped message deleted event without chat_id.")
         return
+
+    signal_reply_list = []
 
     try:
         async with get_session_context() as session:
@@ -99,15 +98,18 @@ async def message_deleted_event_handler(event: MessageDeleted.Event) -> None:
                     deleted_message = await get_message_on_tg_chat_and_msg_id(session, tg_chat.id, tg_msg_id)
                     if deleted_message:
                         signal_reply = await process_deleted_message(deleted_message, session)
-                        # distribute signal reply
-                        try:
-                            await distribute_signal_reply(signal_reply)
-                            logger.info("Signal reply distributed.", extra={"message_id": deleted_message.id, "signal_reply_id": signal_reply.id})
-                        except Exception as e:
-                            logger.exception("Error distributing signal reply", extra={"message_id": deleted_message.id, "signal_reply_id": signal_reply.id})
-
-    except Exception as e:
+                        if signal_reply:
+                            signal_reply_list.append(signal_reply)
+    except Exception:
         logger.exception("Error handling message deleted event.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
+        return
+
+    # Distribution outside session
+    for sr in signal_reply_list:
+        try:
+            await distribute_signal_reply(sr)
+        except Exception:
+            logger.exception("Error distributing signal reply.", extra={"signal_reply_id": getattr(sr, "id", None)})
 
 
 async def new_message_event_handler(event: NewMessage.Event) -> None:
@@ -121,8 +123,7 @@ async def new_message_event_handler(event: NewMessage.Event) -> None:
         logger.info("Message filtered out (empty or invalid).", extra={"tg_chat_id": event.chat_id})
         return
 
-    message: Optional[Message] = None
-    reply_to_message: Optional[Message] = None
+    signal, signal_reply = None, None
 
     try:
         async with get_session_context() as session:
@@ -149,32 +150,26 @@ async def new_message_event_handler(event: NewMessage.Event) -> None:
                 session.add(message)
                 await session.flush()
 
+                reply_to_message = None
                 if tg_message.reply_to and getattr(tg_message.reply_to, "reply_to_msg_id", None):
                     reply_to_message = await get_message_on_tg_chat_and_msg_id(session, tg_chat.id, tg_message.reply_to.reply_to_msg_id)
 
-    except Exception as e:
-        logger.exception("Error preparing new message event.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
+                if reply_to_message:
+                    signal, signal_reply = await process_reply_message(message, reply_to_message, session)
+                else:
+                    signal, signal_reply = await process_new_message(message, session)
+    except Exception:
+        logger.exception("Error handling new message event.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
         return
 
+    # Distribution outside session
     try:
-        if message:
-            if reply_to_message:
-                signal_reply = await process_reply_message(message, reply_to_message, session)
-                try:
-                    await distribute_signal_reply(signal_reply)
-                    logger.info("Reply signal distributed.", extra={"message_id": message.id, "signal_reply_id": signal_reply.id})
-                except Exception as e:
-                    logger.exception("Error distributing reply signal", extra={"message_id": message.id, "signal_reply_id": signal_reply.id})
-            else:
-                signal = await process_new_message(message, session)
-                try:
-                    await distribute_signal(signal)
-                    logger.info("New signal distributed.", extra={"message_id": message.id, "signal_id": signal.id})
-                except Exception as e:
-                    logger.exception("Error distributing new signal", extra={"message_id": message.id, "signal_id": signal.id})
-
-    except Exception as e:
-        logger.exception("Error processing new/reply message.", extra={"tg_chat_id": getattr(event, "chat_id", None), "message_id": getattr(message, "id", None)})
+        if signal:
+            await distribute_signal(signal)
+        if signal_reply:
+            await distribute_signal_reply(signal_reply)
+    except Exception:
+        logger.exception("Error distributing signal or signal reply.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
 
 
 def register_handlers(client: TelegramClient) -> None:
