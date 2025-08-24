@@ -1,7 +1,7 @@
 # backend/messages/tg/handlers.py
 
 import logging
-from typing import Optional, Tuple
+from typing import Optional
 from datetime import timezone
 
 from sqlalchemy.exc import IntegrityError
@@ -54,27 +54,27 @@ async def message_edited_event_handler(event: MessageEdited.Event) -> None:
 
                 if original_message is None:
                     message = Message(
-                        tg_chat_id=tg_chat.id,
                         tg_msg_id=tg_message.id,
+                        tg_chat_id=tg_chat.id,
                         text=msg_text,
                         post_datetime=post_datetime.replace(tzinfo=None),
                         tg_chat=tg_chat,
                     )
                     message = await session.merge(message)
-                    logger.info("Created message due to edit event (not found previously).", extra={"tg_chat_id": tg_chat.id})
+                    await session.flush()
                     try:
                         signal, signal_reply = await process_new_message(message, session)
                     except ValueError as e:
-                        logger.debug(f"Message not processed due to: {str(e)}", extra={"message_id": message.id})
+                        logger.debug(f"New message not processed: {str(e)}", extra={"message_id": message.id})
                         return
                 else:
                     try:
                         signal, signal_reply = await process_updated_message(msg_text, original_message, session)
                     except ValueError as e:
-                        logger.debug(f"Updated message not processed due to: {str(e)}", extra={"message_id": original_message.id})
+                        logger.debug(f"Updated message not processed: {str(e)}", extra={"message_id": original_message.id})
                         return
     except Exception:
-        logger.exception("Error handling message edited event.", extra={"tg_chat_id": event.chat_id})
+        logger.exception("Error handling message edited event.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
         return
 
     # Distribution outside session
@@ -84,15 +84,13 @@ async def message_edited_event_handler(event: MessageEdited.Event) -> None:
         if signal_reply:
             await distribute_signal_reply(signal_reply)
     except Exception:
-        logger.exception("Error distributing signal or signal reply.", extra={"tg_chat_id": event.chat_id})
+        logger.exception("Error distributing signal or signal reply.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
 
 
 async def message_deleted_event_handler(event: MessageDeleted.Event) -> None:
     if not event.chat_id:
         logger.debug("Skipped message deleted event without chat_id.")
         return
-
-    signal_reply_list = []
 
     try:
         async with get_session_context() as session:
@@ -107,20 +105,17 @@ async def message_deleted_event_handler(event: MessageDeleted.Event) -> None:
                     if deleted_message:
                         try:
                             signal_reply = await process_deleted_message(deleted_message, session)
-                            if signal_reply:
-                                signal_reply_list.append(signal_reply)
                         except ValueError as e:
-                            logger.debug(f"Deleted message not processed due to: {str(e)}", extra={"message_id": deleted_message.id})
+                            logger.debug(f"Deleted message skipped: {str(e)}", extra={"message_id": tg_msg_id})
+                            continue
+
+                        # Distribution outside session
+                        try:
+                            await distribute_signal_reply(signal_reply)
+                        except Exception:
+                            logger.exception("Error distributing signal reply from deleted message.", extra={"message_id": tg_msg_id})
     except Exception:
         logger.exception("Error handling message deleted event.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
-        return
-
-    # Distribution outside session
-    for sr in signal_reply_list:
-        try:
-            await distribute_signal_reply(sr)
-        except Exception:
-            logger.exception("Error distributing signal reply.", extra={"signal_reply_id": getattr(sr, "id", None)})
 
 
 async def new_message_event_handler(event: NewMessage.Event) -> None:
@@ -158,7 +153,7 @@ async def new_message_event_handler(event: NewMessage.Event) -> None:
                     post_datetime=post_datetime.replace(tzinfo=None),
                     tg_chat=tg_chat,
                 )
-                session.add(message)
+                message = await session.merge(message)
                 await session.flush()
 
                 reply_to_message = None
@@ -169,19 +164,13 @@ async def new_message_event_handler(event: NewMessage.Event) -> None:
                     try:
                         signal, signal_reply = await process_reply_message(message, reply_to_message, session)
                     except ValueError as e:
-                        logger.debug(f"Reply message not processed due to: {str(e)}", extra={"message_id": message.id})
-                        return
-                    except Exception as e:
-                        logger.exception(f"Reply message not processed due to unexpected error: {str(e)}", extra={"error_type": type(e), "message_id": message.id})
+                        logger.debug(f"Reply message not processed: {str(e)}", extra={"message_id": message.id})
                         return
                 else:
                     try:
                         signal, signal_reply = await process_new_message(message, session)
                     except ValueError as e:
-                        logger.debug(f"New message not processed due to: {str(e)}", extra={"message_id": message.id})
-                        return
-                    except Exception as e:
-                        logger.exception(f"New message not processed due to unexpected error: {str(e)}", extra={"error_type": type(e), "message_id": message.id})
+                        logger.debug(f"New message not processed: {str(e)}", extra={"message_id": message.id})
                         return
     except Exception:
         logger.exception("Error handling new message event.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
