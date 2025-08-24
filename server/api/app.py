@@ -72,7 +72,6 @@ async def client_init(
 
     # Store in Redis as clean JSON
     await redis.add_session(
-        client_instance_id,
         session.model_dump(mode="json", exclude_unset=True),
         ttl=SESSION_TTL,
     )
