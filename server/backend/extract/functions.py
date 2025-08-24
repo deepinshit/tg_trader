@@ -134,7 +134,7 @@ async def get_signal_from_text(
     if errors:
         fallback_to_ai = len(errors) < MAX_EXCEPTIONS_FOR_AI_SIGNAL_EXTRACTION
         # Keep errors in debug; they are expected during coarse manual parse
-        logger.info(f"got {len(errors)} (fallback_to_ai={fallback_to_ai}) Manual extraction validation errors: {','.join(errors)}", extra=msg_extra)
+        logger.info(f"got {len(errors)} (fallback_to_ai={fallback_to_ai}) Manual extraction validation errors: {','.join(str(e) for e in errors)}", extra=msg_extra)
 
         # Step 3 — Fallback to AI if "signal-ish" but incomplete
         if not fallback_to_ai:
@@ -163,7 +163,7 @@ async def get_signal_from_text(
             errors = validate_signal_base(signal_base)
             if errors:
                 # Keep errors in debug; they are expected during coarse manual parse
-                logger.info(f"got {len(errors)} AI extraction validation errors: {','.join(errors)}", extra=msg_extra)
+                logger.info(f"got {len(errors)} AI extraction validation errors: {','.join(str(e) for e in errors)}", extra=msg_extra)
                 return None
             
     try:

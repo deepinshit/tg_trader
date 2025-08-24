@@ -14,7 +14,7 @@ from backend.messages.tg.client import init_telegram_client
 from backend.messages.tg.handlers import register_handlers
 from background_tasks import shutdown_background_tasks
 from backend.db.crud.user import get_or_create_admin
-from backend.messages.tg.functions import update_dialogs
+from backend.messages.tg.functions import update_dialogs, send_admin_message
 from cfg import START_NGROK
 from sub_processes import start_redis, start_ngrok, stop_process
 
@@ -110,7 +110,9 @@ async def main():
                 nonlocal ngrok_url, ngrok_proc
                 ngrok_url, ngrok_proc = await start_ngrok(8000)
             if START_NGROK:
-                tg.create_task(init_ngrok())
+                ngrok_task = tg.create_task(init_ngrok())
+            else:
+                ngrok_task = None
 
             # Database setup
             db_setup_task = tg.create_task(setup_db())
@@ -132,6 +134,10 @@ async def main():
 
             # Start FastAPI app
             tg.create_task(run_app(app))
+
+            if ngrok_task is not None:
+                await ngrok_task
+                await send_admin_message(client, f"Ngrok URL:\n{ngrok_url}")
 
         logger.info("Application startup completed successfully.",
                     extra={"ngrok_url": ngrok_url})

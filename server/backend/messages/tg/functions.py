@@ -66,7 +66,7 @@ async def register_handler(
     """
     # Resolve client
     tg_client
-
+    
     if not tg_client.is_connected():
         logger.error(
             "Cannot register handler: Telegram client is not connected."
@@ -101,6 +101,9 @@ async def register_handler(
         )
         return False
     
+async def send_admin_message(tg_client: TelegramClient, message: str):
+    return await tg_client.send_message((await tg_client.get_me(True)), message)
+
 async def update_dialogs(client: TelegramClient, limit=None):
     """
     Fetch all dialogs (chats) from Telegram and convert them into TgChat models.

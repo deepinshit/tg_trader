@@ -69,15 +69,16 @@ async def create_config_action(
     lot_mode = form_data.get("lot_mode") or "AUTO"
     fixed_lot = form_data.get("fixed_lot")
     max_risk_perc_from_equity_per_signal = form_data.get("max_risk_perc_from_equity_per_signal") or 0 
-    max_price_range_perc = form_data.get("max_price_range_perc")
     multiple_tp_mode = form_data.get("multiple_tp_mode") or "ALL"
     multiple_entry_mode = form_data.get("multiple_entry_mode") or "ALL"
+    max_tp_prices = form_data.get("max_tp_prices")
+    max_entry_prices = form_data.get("max_entry_prices") 
 
     # Booleans: form sends "on" if checked, else None or don't include
     close_on_signal_reply = form_data.get("close_on_signal_reply") == "on"
     modify_on_signal_reply = form_data.get("modify_on_signal_reply") == "on"
     close_on_msg_delete = form_data.get("close_on_msg_delete") == "on"
-    ignore_prices_out_of_range = form_data.get("ignore_prices_out_of_range") != "off"
+    ignore_invalid_prices = form_data.get("ignore_invalid_prices") != "off"
 
     breakeven_on_tp_layer = form_data.get("breakeven_on_tp_layer")
     close_trades_before_everyday_swap = form_data.get("close_trades_before_everyday_swap") == "on"
@@ -106,14 +107,13 @@ async def create_config_action(
                 symbol_synonyms_mapping=symbol_synonyms_mapping,
                 lot_mode=LotMode(lot_mode),  # Assuming conversion like before, be careful!
                 fixed_lot=fixed_lot if fixed_lot is None else float(fixed_lot),
-                max_price_range_perc=max_price_range_perc if max_price_range_perc is None else float(max_price_range_perc),
                 max_risk_perc_from_equity_per_signal=max_risk_perc_from_equity_per_signal,
                 multiple_tp_mode=MultipleTPMode(multiple_tp_mode),
                 multiple_entry_mode=MultipleEntryMode(multiple_entry_mode),
                 close_on_signal_reply=close_on_signal_reply,
                 modify_on_signal_reply=modify_on_signal_reply,
                 close_on_msg_delete=close_on_msg_delete,
-                ignore_prices_out_of_range=ignore_prices_out_of_range,
+                ignore_invalid_prices=ignore_invalid_prices,
                 breakeven_on_tp_layer=None if breakeven_on_tp_layer is None else int(breakeven_on_tp_layer),
                 close_trades_before_everyday_swap=close_trades_before_everyday_swap,
                 close_trades_before_wednesday_swap=close_trades_before_wednesday_swap,
@@ -122,6 +122,8 @@ async def create_config_action(
                 tradeprofit_percent_from_balans_for_breakeven=(
                     None if tradeprofit_percent_from_balans_for_breakeven is None else float(tradeprofit_percent_from_balans_for_breakeven)
                 ),
+                max_tp_prices=max_tp_prices,
+                max_entry_prices=max_entry_prices,
                 expire_minutes_pending_trade=None if expire_minutes_pending_trade is None else int(expire_minutes_pending_trade),
                 expire_minutes_active_trade=None if expire_minutes_active_trade is None else int(expire_minutes_active_trade),
                 expire_at_tp_hit_before_entry=None if expire_at_tp_hit_before_entry is None else int(expire_at_tp_hit_before_entry),

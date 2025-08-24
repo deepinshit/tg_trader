@@ -248,11 +248,9 @@
             <label title="Expire active trades after X minutes"><input type="number" name="expire_minutes_active_trade" placeholder="Expire active trade (min)"></label>
             <label title="Expire trades if TP hit before entry"><input type="number" name="expire_at_tp_hit_before_entry" placeholder="Expire at TP hit before entry (min)"></label>
             <label title="Follow TP/SL hits from other setups"><input type="checkbox" name="follow_tp_and_sl_hits_from_others"> Follow TP/SL hits from others</label>
-            <label title="Ignore trades with prices out of range"><input type="checkbox" name="ignore_prices_out_of_range" checked> Ignore prices out of range</label>
-            <label title="Maximum allowed price range as a percentage (0–100)">
-              Max Price Range (%)
-              <input type="number" step="0.01" min="0" max="100" name="max_price_range_perc" placeholder="Optional">
-            </label>
+            <label title="Ignore trades with invalid prices"><input type="checkbox" name="ignore_invalid_prices" checked> Ignore invalid prices</label>
+            <label title="Max entry price layers"><input type="number" name="max_entry_prices" placeholder="Max entry prices"></label>
+            <label title="Max tp price layers"><input type="number" name="max_tp_prices" placeholder="Max tp prices"></label>
           </div>
         </details>
 
