@@ -2,153 +2,169 @@
 """
 SignalReply distribution
 
-This module provides a single entry point, `distribute_signal_reply`, which takes a
-`SignalReply` model instance and a `copy_setup_id`, and enqueues a serialized
-signal reply into the Redis "pending" queues for all sessions belonging to the
-specified copy setup.
+This module provides a single entry point, `distribute_signal_reply`, which
+takes a `SignalReply` model instance and enqueues it into the Redis "pending"
+queues for all sessions of all copy setups in the reply's chat.
 
 Design goals:
 - Production-ready and robust: clear validation, defensive logging, graceful
   degradation (one failed session doesn't block others), and proper async
   cancellation handling.
-- Clean and not overcomplicated: minimal changes to logic/architecture while
-  strengthening reliability.
-- Documented and professional: docstrings and type hints.
-- Scalable/flexible yet stable: per-session failure isolation and structured logs.
-
-Logging:
-- All logs include `extra` with the related DB model id under the key
-  `signal_reply_id` (model_name_id requirement) and the `copy_setup_id`.
+- Clean and consistent with `distribute_signal`: preloads relationships,
+  structured logging, per-session failure isolation.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List
+from typing import List, Optional, Sequence
 
-from models import SignalReply
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from models import SignalReply, Message, CopySetup, TgChat
 from backend.redis.store import RedisStore
 from api.schemes import Session, SignalReply as SignalReplyScheme
 from backend.distribution.helpers import create_signal_reply_scheme
+from backend.db.functions import get_session_context
 
 __all__ = ["distribute_signal_reply"]
 
 logger = logging.getLogger(__name__)
 
 
-# ----------------------------------------------------------------------
-# SignalReply distribution
-# ----------------------------------------------------------------------
-async def distribute_signal_reply(reply: SignalReply, copy_setup_id: int) -> None:
+async def distribute_signal_reply(reply: SignalReply) -> None:
     """
-    Distribute a `SignalReply` into Redis pending queues for all sessions
-    of a given copy setup.
-
-    The function is intentionally defensive: it validates inputs, handles
-    per-session enqueue errors without stopping the whole distribution, and
-    preserves async cancellation semantics.
+    Distribute a SignalReply to all sessions of all copy setups in its chat.
 
     Parameters
     ----------
     reply : SignalReply
         The SignalReply ORM/model instance to distribute.
-    copy_setup_id : int
-        The ID of the copy setup whose sessions should receive the reply.
 
     Returns
     -------
     None
-
-    Notes
-    -----
-    - Logging `extra` includes:
-        * "signal_reply_id": reply.id         (model_name_id requirement)
-        * "copy_setup_id": copy_setup_id
-        * (per-session failure only) "client_instance_id"
     """
-    # Build common logging context early; be careful if reply.id is missing
     reply_id = getattr(reply, "id", None)
-    base_extra = {"signal_reply_id": reply_id, "copy_setup_id": copy_setup_id}
+    base_extra = {"signal_reply_id": reply_id}
 
-    # Basic input validation (fail fast with clear logs, no exceptions raised here)
     if reply is None or reply_id is None:
         logger.error(
             "distribute_signal_reply called with invalid reply or missing id.",
             extra=base_extra,
         )
         return
-    if not isinstance(copy_setup_id, int):
-        logger.error(
-            "distribute_signal_reply called with non-integer copy_setup_id=%r.",
-            copy_setup_id,
+
+    # Preload relationships
+    try:
+        async with get_session_context() as session:
+            async with session.begin():
+                stmt = (
+                    select(SignalReply)
+                    .options(
+                        selectinload(SignalReply.message)
+                        .selectinload(Message.tg_chat)
+                        .selectinload(TgChat.copy_setups)
+                        .selectinload(CopySetup.config)
+                    )
+                    .where(SignalReply.id == reply_id)
+                )
+                result = await session.execute(stmt)
+                reply: Optional[SignalReply] = result.scalars().first()
+
+        if not reply:
+            logger.warning(
+                "SignalReply not found in DB.",
+                extra=base_extra,
+            )
+            return
+
+        message: Optional[Message] = getattr(reply, "message", None)
+        tg_chat: Optional[TgChat] = getattr(message, "tg_chat", None)
+        copy_setups: Sequence[CopySetup] = getattr(tg_chat, "copy_setups", [])
+
+        if not copy_setups:
+            logger.info(
+                "No copy setups associated with SignalReply; nothing to distribute.",
+                extra=base_extra,
+            )
+            return
+
+    except Exception:
+        logger.exception(
+            "Failed to preload SignalReply relationships.",
             extra=base_extra,
         )
         return
 
+    # Distribute to Redis
     try:
         async with RedisStore() as redis:
-            sessions: List[Session] = await redis.get_sessions_for_copysetup(copy_setup_id)
+            for cs in copy_setups:
+                cs_id = getattr(cs, "id", None)
+                cs_extra = {**base_extra, "copy_setup_id": cs_id}
 
-            if not sessions:
-                logger.info(
-                    "No sessions found for copy_setup_id=%s; nothing to distribute.",
-                    copy_setup_id,
-                    extra=base_extra,
-                )
-                return
+                if cs_id is None:
+                    logger.warning(
+                        "CopySetup missing id; skipping.",
+                        extra=cs_extra,
+                    )
+                    continue
 
-            # Serialize the reply once; reuse for all sessions.
-            signal_reply_scheme: SignalReplyScheme = create_signal_reply_scheme(reply)
-
-            distributed_count = 0
-            total_sessions = len(sessions)
-
-            # Enqueue for each session; isolate per-session failures.
-            for sess in sessions:
                 try:
-                    await redis.add_pending_signal_replies(
-                        sess.client_instance_id, [signal_reply_scheme]
-                    )
-                    distributed_count += 1
-                except Exception:
-                    # Do not stop on a single failure; log with session context and continue.
-                    logger.exception(
-                        "Failed to enqueue SignalReply to session client_instance_id=%r.",
-                        getattr(sess, "client_instance_id", None),
-                        extra={
-                            **base_extra,
-                            "client_instance_id": getattr(sess, "client_instance_id", None),
-                        },
-                    )
+                    sessions: List[Session] = await redis.get_sessions_by_copysetup(cs_id)
+                    if not sessions:
+                        logger.debug(
+                            "No active sessions for copy setup; skipping.",
+                            extra=cs_extra,
+                        )
+                        continue
 
-            if distributed_count:
-                logger.info(
-                    "Distributed signal_reply_id=%s for copy_setup_id=%s to %s/%s sessions.",
-                    reply_id,
-                    copy_setup_id,
-                    distributed_count,
-                    total_sessions,
-                    extra=base_extra,
-                )
-            else:
-                logger.warning(
-                    "signal_reply_id=%s for copy_setup_id=%s was not distributed to any session.",
-                    reply_id,
-                    copy_setup_id,
-                    extra=base_extra,
-                )
+                    scheme: SignalReplyScheme = create_signal_reply_scheme(reply)
+
+                    distributed_count = 0
+                    total_sessions = len(sessions)
+
+                    for sess in sessions:
+                        client_id = getattr(sess, "client_instance_id", None)
+                        try:
+                            await redis.add_pending_signal_replies(client_id, [scheme])
+                            distributed_count += 1
+                        except Exception:
+                            logger.exception(
+                                "Failed to enqueue SignalReply to session.",
+                                extra={**cs_extra, "client_instance_id": client_id},
+                            )
+
+                    if distributed_count:
+                        logger.info(
+                            "Distributed SignalReply to %d/%d sessions.",
+                            distributed_count,
+                            total_sessions,
+                            extra=cs_extra,
+                        )
+                    else:
+                        logger.warning(
+                            "SignalReply generated but not distributed to any session.",
+                            extra=cs_extra,
+                        )
+
+                except Exception:
+                    logger.exception(
+                        "Failed to distribute SignalReply for copy setup.",
+                        extra=cs_extra,
+                    )
 
     except asyncio.CancelledError:
-        # Preserve cooperative cancellation.
         logger.warning(
-            "Signal reply distribution cancelled.",
+            "SignalReply distribution cancelled.",
             extra=base_extra,
         )
         raise
     except Exception:
-        # Log unexpected failures with full traceback.
         logger.exception(
-            "Failed to distribute signal reply.",
+            "Failed to distribute SignalReply.",
             extra=base_extra,
         )

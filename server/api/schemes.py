@@ -28,6 +28,7 @@ class Trade(BaseModel):
     tp_price: Optional[float] = None
     modified_sl: Optional[float] = None
     close_price: Optional[float] = None
+    current_price: Optional[float] = None
 
     # Timing
     open_datetime: Optional[datetime] = None

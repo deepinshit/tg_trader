@@ -26,8 +26,18 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["get_copy_setup"]
 
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
-async def get_copy_setup_on_token(
+async def get_copy_setup_on_token(db: AsyncSession, token: str):
+    result = await db.execute(
+        select(CopySetup)
+        .where(CopySetup.cs_token == token)
+        .options(selectinload(CopySetup.config))  # Eager-load the config
+    )
+    return result.scalars().first()
+
+async def get_copy_setup_on_token1(
     session: AsyncSession,
     cs_token: str,
     include_logs: bool = False,

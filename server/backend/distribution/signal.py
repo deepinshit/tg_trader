@@ -69,7 +69,7 @@ async def distribute_signal(signal: Signal) -> None:
         for cs in copy_setups:
             cs_id: Optional[int] = getattr(cs, "id", None)
             try:
-                sessions: List[Session] = await redis.get_sessions_for_copysetup(cs_id)
+                sessions: List[Session] = await redis.get_sessions_by_copysetup(cs_id)
                 if not sessions:
                     logger.debug("No active sessions for copy setup; skipping.",
                                  extra={"signal_id": signal.id, "copy_setup_id": cs_id})

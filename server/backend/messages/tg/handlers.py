@@ -160,7 +160,7 @@ async def new_message_event_handler(event: NewMessage.Event) -> None:
                 if tg_message.reply_to and getattr(tg_message.reply_to, "reply_to_msg_id", None):
                     reply_to_message = await get_message_on_tg_chat_and_msg_id(session, tg_chat.id, tg_message.reply_to.reply_to_msg_id)
 
-                if reply_to_message:
+                if reply_to_message and reply_to_message.signal:
                     try:
                         signal, signal_reply = await process_reply_message(message, reply_to_message, session)
                     except ValueError as e:
