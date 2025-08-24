@@ -59,7 +59,7 @@ async def client_init(
     client_instance_id = body.client_instance_id or f"cid-{uuid.uuid4()}"
     ip = request.client.host if request.client else "0.0.0.0"
 
-    session: Optional[Session] = await redis.get_session()
+    session: Optional[Session] = await redis.get_session_by_client(client_instance_id)
 
     # Hydrate Session model directly from dict
     session = Session.model_validate({
