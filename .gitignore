@@ -5,26 +5,29 @@ __pycache__/
 *.pyd
 
 # Virtual environments
-.env
-.venv
+*.env
+*.venv
 env/
 venv/
 server/env/
 
 # IDE / editor
-.idea/
-.vscode/
+*.idea/
+*.vscode/
 
 # OS
-.DS_Store
+*.DS_Store
 Thumbs.db
 
 # Logs
 *.log
 
 # Local settings
-.env.local
+*.env.local
 
 # Telethon session file
-.session
-.session-journal
+*.session
+*.session-journal
+
+# Redis DB
+*.rdb
