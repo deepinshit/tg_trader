@@ -59,14 +59,15 @@ async def _generate_trades(copy_setup: CopySetup, signal: Signal) -> List[Mt5Tra
 
     # Filter / normalize prices according to configuration
     try:
-        entries, tps, sls = filter_invalid_prices(
+        entries, tps = filter_invalid_prices(
             order_type=signal.type,
-            sl_prices=[signal.sl_price] if getattr(signal, "sl_price", None) else [],
+            sl_price=signal.sl_price,
             entry_prices=signal.entry_prices or [],
             tp_prices=signal.tp_prices or [],
-            max_price_range_pct=cfg.max_price_range_perc,
-            raise_on_invalid=not cfg.ignore_prices_out_of_range,
-            replace_with_zero=cfg.ignore_prices_out_of_range,
+            max_entries=cfg.max_entry_prices,
+            max_tps=cfg.max_tp_prices,
+            ignore_invalid=cfg.ignore_invalid_prices,
+            model_name_id=signal.id
         )
     except Exception as exc:
         # Prices unacceptable per config – skip the entire signal
@@ -103,7 +104,7 @@ async def _generate_trades(copy_setup: CopySetup, signal: Signal) -> List[Mt5Tra
                     type=signal.type,
                     entry_price=entry,
                     tp_price=tp,
-                    sl_price=(sls[0] if sls else None),
+                    sl_price=signal.sl_price,
                     state=Mt5TradeState.PENDING_QUEUE,
                     signal_id=signal.id,
                     signal_entries_idx=e_idx,
