@@ -103,7 +103,7 @@ def filter_invalid_prices(
         "Price filtering completed",
         extra={
             **log_extra,
-            "order_type": order_type.name,
+            "order_type": str(order_type),
             "sl": sl_price,
             "counts": {
                 "entry": f"{len(entry_prices)}",
