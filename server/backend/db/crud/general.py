@@ -11,7 +11,7 @@ Generic async CRUD helpers for SQLAlchemy 2.0 ORM models.
 from __future__ import annotations
 
 import logging
-from typing import Type, Optional, Union, TypeVar, Any
+from typing import Type, Optional, Union, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,9 +39,18 @@ async def create(instance: T, session: AsyncSession) -> T:
         session.add(instance)
         await session.flush()
         await session.refresh(instance)
-        logger.debug("Created %s with id=%s", type(instance).__name__, getattr(instance, "id", None))
+        logger.debug(
+            "Created %s with id=%s",
+            type(instance).__name__,
+            getattr(instance, "id", None),
+        )
         return instance
     except IntegrityError:
+        logger.warning(
+            "IntegrityError creating %s with id=%s",
+            type(instance).__name__,
+            getattr(instance, "id", None),
+        )
         raise
     except SQLAlchemyError:
         logger.exception("Error creating %s", type(instance).__name__)
@@ -90,33 +99,34 @@ async def update(instance: T, session: AsyncSession) -> T:
     """
     Persist changes to an existing SQLAlchemy model instance.
 
-    - Flushes and refreshes the instance.
-    - Does not modify any attributes (assumes instance is already updated).
+    - Merges, flushes, and refreshes the instance.
+    - Assumes instance attributes are already updated.
 
     Args:
         instance: SQLAlchemy model instance to persist.
         session: AsyncSession.
 
     Returns:
-        The persisted instance.
+        The persisted instance attached to the session.
     """
     try:
-        session.add(instance)
+        merged_instance = await session.merge(instance)
         await session.flush()
-        await session.refresh(instance)
+        await session.refresh(merged_instance)
         logger.debug(
-            "Saved %s id=%s",
-            instance.__class__.__name__,
-            getattr(instance, "id", None),
+            "Updated %s id=%s",
+            merged_instance.__class__.__name__,
+            getattr(merged_instance, "id", None),
         )
-        return instance
+        return merged_instance
     except SQLAlchemyError:
         logger.exception(
-            "Error saving %s id=%s",
+            "Error updating %s id=%s",
             instance.__class__.__name__,
             getattr(instance, "id", None),
         )
         raise
+
 
 # --------------------------------------------------------------------------------------
 # DELETE
@@ -136,7 +146,11 @@ async def delete(model: Type[T], object_id: int, session: AsyncSession) -> bool:
     try:
         obj = await session.get(model, object_id)
         if not obj:
-            logger.debug("No %s found for id=%s; delete skipped", model.__name__, object_id)
+            logger.debug(
+                "No %s found for id=%s; delete skipped",
+                model.__name__,
+                object_id,
+            )
             return False
 
         await session.delete(obj)
