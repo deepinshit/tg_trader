@@ -1,5 +1,3 @@
-# backend/messages/tg/handlers.py
-
 import logging
 from typing import Optional
 from datetime import timezone
@@ -12,7 +10,7 @@ from telethon.events.messagedeleted import MessageDeleted
 
 from models import Message, TgChat
 from backend.db.crud.tg_chat import get_tg_chat_on_id
-from backend.db.crud.message import get_message_on_tg_chat_and_msg_id
+from backend.db.crud.message import get_message_on_tg_chat_and_msg_id, create_or_get_message
 from backend.db.functions import get_session_context
 from backend.messages.helpers import filter_message_text, build_tg_chat
 from backend.messages.processing import (
@@ -49,19 +47,21 @@ async def message_edited_event_handler(event: MessageEdited.Event) -> None:
                     return
 
                 original_message = await get_message_on_tg_chat_and_msg_id(session, tg_chat.id, tg_message.id)
-
-                post_datetime = tg_message.date.replace(tzinfo=timezone.utc) if tg_message.date.tzinfo is None else tg_message.date.astimezone(timezone.utc)
+                post_datetime = (
+                    tg_message.date.replace(tzinfo=timezone.utc)
+                    if tg_message.date.tzinfo is None
+                    else tg_message.date.astimezone(timezone.utc)
+                )
 
                 if original_message is None:
-                    message = Message(
-                        tg_msg_id=tg_message.id,
+                    message = await create_or_get_message(
+                        session=session,
                         tg_chat_id=tg_chat.id,
+                        tg_msg_id=tg_message.id,
                         text=msg_text,
                         post_datetime=post_datetime.replace(tzinfo=None),
                         tg_chat=tg_chat,
                     )
-                    message = await session.merge(message)
-                    await session.flush()
                     try:
                         signal, signal_reply = await process_new_message(message, session)
                     except ValueError as e:
@@ -113,7 +113,10 @@ async def message_deleted_event_handler(event: MessageDeleted.Event) -> None:
                         try:
                             await distribute_signal_reply(signal_reply)
                         except Exception:
-                            logger.exception("Error distributing signal reply from deleted message.", extra={"message_id": tg_msg_id})
+                            logger.exception(
+                                "Error distributing signal reply from deleted message.",
+                                extra={"message_id": tg_msg_id},
+                            )
     except Exception:
         logger.exception("Error handling message deleted event.", extra={"tg_chat_id": getattr(event, "chat_id", None)})
 
@@ -145,20 +148,26 @@ async def new_message_event_handler(event: NewMessage.Event) -> None:
                         await session.rollback()
                         tg_chat = await get_tg_chat_on_id(session, event.chat_id)
 
-                post_datetime = tg_message.date.replace(tzinfo=timezone.utc) if tg_message.date.tzinfo is None else tg_message.date.astimezone(timezone.utc)
-                message = Message(
-                    tg_msg_id=tg_message.id,
+                post_datetime = (
+                    tg_message.date.replace(tzinfo=timezone.utc)
+                    if tg_message.date.tzinfo is None
+                    else tg_message.date.astimezone(timezone.utc)
+                )
+
+                message = await create_or_get_message(
+                    session=session,
                     tg_chat_id=tg_chat.id,
+                    tg_msg_id=tg_message.id,
                     text=msg_text,
                     post_datetime=post_datetime.replace(tzinfo=None),
                     tg_chat=tg_chat,
                 )
-                message = await session.merge(message)
-                await session.flush()
 
                 reply_to_message = None
                 if tg_message.reply_to and getattr(tg_message.reply_to, "reply_to_msg_id", None):
-                    reply_to_message = await get_message_on_tg_chat_and_msg_id(session, tg_chat.id, tg_message.reply_to.reply_to_msg_id)
+                    reply_to_message = await get_message_on_tg_chat_and_msg_id(
+                        session, tg_chat.id, tg_message.reply_to.reply_to_msg_id
+                    )
 
                 if reply_to_message and reply_to_message.signal:
                     try:

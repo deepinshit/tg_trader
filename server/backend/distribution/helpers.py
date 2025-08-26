@@ -48,6 +48,7 @@ def create_trade_scheme(mt5_trade: Mt5Trade) -> Trade:
     try:
         scheme = Trade(
             id=mt5_trade.id,
+            signal_id=mt5_trade.signal_id,
             ticket=mt5_trade.ticket,
             symbol=mt5_trade.symbol,
             type=mt5_trade.type,
@@ -69,9 +70,7 @@ def create_trade_scheme(mt5_trade: Mt5Trade) -> Trade:
             commission=mt5_trade.commission,
             fee=mt5_trade.fee,
             close_price=mt5_trade.close_price,
-            close_datetime=mt5_trade.close_datetime,
-            created_at=mt5_trade.created_at,
-            updated_at=mt5_trade.updated_at,
+            close_datetime=mt5_trade.close_datetime
         )
         logger.debug(
             "Converted Mt5Trade -> Trade scheme.",
@@ -115,7 +114,6 @@ def create_signal_reply_scheme(signal_reply: SignalReply) -> SignalReplyScheme:
             generated_by=signal_reply.generated_by,
             info_message=signal_reply.info_message,
             original_signal_id=signal_reply.original_signal_id,
-            created_at=signal_reply.created_at,
         )
         logger.debug(
             "Converted SignalReply -> SignalReply scheme.",

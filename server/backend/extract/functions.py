@@ -28,7 +28,6 @@ from backend.extract.ai.signal import extract_signal_ai
 from backend.extract.manual.signal import extract_signal_manual
 from backend.extract.manual.signal_reply import extract_signal_reply_action_manual
 from backend.extract.normalization import clean_signal_base, normalize_signal_base
-from backend.extract.filtering import filter_invalid_prices
 from backend.extract.validation import validate_signal_base
 from backend.extract.extract_models import SignalBase, SignalReplyBase  # noqa: F401 (kept for architecture consistency)
 from cfg import MAX_EXCEPTIONS_FOR_AI_SIGNAL_EXTRACTION
@@ -167,29 +166,15 @@ async def get_signal_from_text(
                 return None
             
     try:
-        normalized_signal: Signal = normalize_signal_base(signal_base)
-
-        # Filter entries & TPs based on SL
-        filtered_entries, filtered_tps = filter_invalid_prices(
-            order_type=normalized_signal.type,
-            sl_price=normalized_signal.sl_price,
-            entry_prices=normalized_signal.entry_prices,
-            tp_prices=normalized_signal.tp_prices
-        )
+        signal: Signal = normalize_signal_base(signal_base)
     except Exception as e:
         logger.exception(
-            "Exception while normalizing and filtering SignalBase -> Signal",
+            "Exception while normalizing SignalBase -> Signal",
             extra={**msg_extra, "error": str(e), "error_type": type(e).__name__},
         )
         return None
 
-    # ✅ Safely create a new instance
-    new_signal = normalized_signal.copy(
-        entry_prices=filtered_entries,
-        tp_prices=filtered_tps
-    )
-
-    return new_signal
+    return signal
 
 
 async def get_signal_reply_action_from_text(

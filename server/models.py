@@ -456,6 +456,7 @@ class CopySetupConfig(Base):
         default=Decimal('0')
     )
     
+    # SERVER
     # Multiple TP/Entry modes
     multiple_tp_mode: Mapped[MultipleTPMode] = mapped_column(
         PgEnum(MultipleTPMode, name="multiple_tp_mode"),
@@ -468,6 +469,7 @@ class CopySetupConfig(Base):
         default=MultipleEntryMode.ALL
     )
     
+    # SERVER
     # Behavior flags
     close_on_signal_reply: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     modify_on_signal_reply: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

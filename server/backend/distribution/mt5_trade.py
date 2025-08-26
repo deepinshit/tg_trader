@@ -114,7 +114,7 @@ async def _generate_trades(copy_setup: CopySetup, signal: Signal) -> List[Mt5Tra
                 )
 
                 try:
-                    trade = await create(trade, db_sess)  # DB assigns ID / manages commit per implementation
+                    pass#trade = await create(trade, db_sess)  # DB assigns ID / manages commit per implementation
                 except Exception as exc:
                     # Log and continue with the next trade candidate
                     logger.exception(

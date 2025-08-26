@@ -13,7 +13,7 @@ class Trade(BaseModel):
     Represents a trade lifecycle event or state from the client.
     Typically synced from the trading platform (e.g., MT4/MT5).
     """
-    id: int
+    id: Optional[int] = None
     signal_id: int
 
     # Platform trade identifiers
@@ -48,6 +48,8 @@ class Trade(BaseModel):
     swap: Optional[float] = None
     commission: Optional[float] = None
     fee: Optional[float] = None
+    comment: Optional[str] = None
+    magic: Optional[int] = None
 
     class Config:
         extra = "forbid"

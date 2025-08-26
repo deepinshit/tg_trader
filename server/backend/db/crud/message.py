@@ -17,6 +17,7 @@ import logging
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import MultipleResultsFound, SQLAlchemyError
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -113,3 +114,48 @@ async def get_message_on_tg_chat_and_msg_id(
             extra={"message_id": None, "tg_chat_id": tg_chat_id, "tg_msg_id": tg_msg_id},
         )
         raise
+
+
+async def create_or_get_message(
+    session: AsyncSession,
+    tg_chat_id: int,
+    tg_msg_id: int,
+    text: str,
+    post_datetime,
+    tg_chat=None,
+) -> Message:
+    """
+    Create a new message or return the existing one.
+    Uses ON CONFLICT DO NOTHING for concurrency safety.
+    """
+
+    stmt = insert(Message).values(
+        tg_chat_id=tg_chat_id,
+        tg_msg_id=tg_msg_id,
+        text=text,
+        post_datetime=post_datetime,
+    ).on_conflict_do_nothing(
+        index_elements=[Message.tg_chat_id, Message.tg_msg_id]
+    ).returning(Message)
+
+    result = await session.execute(stmt)
+    message = result.scalar_one_or_none()
+
+    # If we inserted a new one → done
+    if message:
+        return message
+
+    # If already exists → fetch it
+    result = await session.execute(
+        select(Message).where(
+            Message.tg_chat_id == tg_chat_id,
+            Message.tg_msg_id == tg_msg_id
+        )
+    )
+    message = result.scalar_one()
+
+    # Attach tg_chat if provided (optional)
+    if tg_chat and not message.tg_chat:
+        message.tg_chat = tg_chat
+
+    return message
